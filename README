@@ -1,0 +1,31 @@
+
+Installation instructions
+*************************
+
+python setup.py install
+
+
+SVN instructions
+****************
+
+Fetching the source:
+
+svn co https://neuralensemble.org/svn/PyNN/trunk pyNN  
+
+** Anonymous checkout is allowed
+
+Committing Changes:
+
+In the svn dir:
+svn commit
+
+** svn commit requires a neuralensemble.org account, or a FACETS
+account with SVN access.
+
+Trac
+****
+
+http://neuralensemble.org/PyNN
+
+:copyright: Copyright 2006-2011 by the PyNN team, see AUTHORS.
+:license: CeCILL, see LICENSE for details.

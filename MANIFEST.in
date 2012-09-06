@@ -1,0 +1,11 @@
+include src/neuron/nmodl/*.mod
+include src/descriptions/templates/*/*.txt
+include test/parameters/*
+include test/system/*.py
+include test/unittests/*.py
+include examples/*.py
+include doc/*.txt
+include LICENSE
+include AUTHORS
+include changelog
+

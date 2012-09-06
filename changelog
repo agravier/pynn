@@ -1,0 +1,735 @@
+====================
+Release 0.7.1 (r958)
+====================
+
+The main reason for this release is to add copyright statements, without which
+the validity of the CeCILL licence could be questioned. There are also some
+minor bug fixes.
+
+====================
+Release 0.7.0 (r929)
+====================
+
+This release sees a major extension of the API with the addition of the
+`PopulationView` and `Assembly` classes, which aim to make building large,
+structured networks much simpler and cleaner. A `PopulationView` allows a
+sub-set of the neurons from a `Population` to be encapsulated in an object. We
+call it a "view", rather than a "sub-population", to emphasize the fact that the
+neurons are not copied: they are the same neurons as in the parent `Population`,
+and any operations on either view or parent (setting parameter values, recording,
+etc.) will be reflected in the other.  An `Assembly` is a list of `Population`
+and/or `PopulationView` objects, enabling multiple cell types to be encapsulated
+in a single object. `PopulationView` and `Assembly` objects behave in most ways
+like `Population`: you can record them, connect them using a `Projection`, you
+can have views of views...
+
+The "low-level API" (rechristened "procedural API") has been reimplemented in
+in terms of `Population` and `Projection`. For example, `create()` now returns a
+`Population` object rather than a list of IDs, and `connect()` returns a
+`Projection`object. This change should be almost invisible to the user, since
+`Population` now behaves very much like a list of IDs (can be sliced, joined,
+etc.).
+There has been a major change to cell addressing: Populations now always store
+cells in a one-dimensional array, which means cells no longer have an address
+but just an index. To specify the spatial structure of a Population, pass a
+Structure object to the constructor, e.g.
+
+  `p = Population((12,10), IF_cond_exp)`
+
+  is now
+
+  `p = Population(120, IF_cond_exp, structure=Grid2D(1.2))`
+
+although the former syntax still works, for backwards compatibility. The reasons
+for doing this are:
+  (i)   we can now have more interesting structures than just grids
+  (ii)  efficiency (less juggling addresses, flattening)
+  (iii) simplicity (less juggling addresses, less code).
+
+The API for setting initial values has changed: this is now done via the
+`initialize()` function or the `Population.initialize()` method, rather than by
+having `v_init` and similar parameters for cell models.
+  
+Other API changes:
+
+- simplification of the `record_X()` methods.
+- enhanced `describe()` methods: can now use Jinja2 or Cheetah templating
+  engines to produce much nicer, better formatted network descriptions.
+- connections and neuron positions can now be saved to various binary formats as
+  well as to text files.
+- added some new connectors: `SmallWorldConnector` and `CSAConnector`
+  (CSA = Connection Set Algebra)
+- native neuron and synapse models are now supported using a NativeModelType
+  subclass, rather than specified as strings. This simplifies the code internally
+  and increases the range of PyNN functionality that can be used with native
+  models (e.g. you can now record any variable from a native NEST or NEURON
+  model). For NEST, there is a class factory ``native_cell_type()``, for NEURON
+  the NativeModelType subclasses have to be written by hand.
+
+Backend changes:
+
+- the NEST backend has been updated to work with NEST version 2.0.0.
+- the Brian backend has seen extensive work on performance and on bringing it
+  to feature parity with the other backends.
+
+
+Details:
+
+* Where `Population.initial_values` contains arrays, these arrays now consistently contain only enough values for local cells. Before, there was some inconsistency about how this was handled. Still need more tests to be sure it's really working as expected.
+
+* Allow override of default_maxstep for NEURON backend as setup paramter.  This is for the case that the user wants to add network connections across nodes after simulation start time.
+
+* Discovered that when using NEST with mpi4py, you must `import nest` first and let it do the MPI initialization. The only time this seems to be a problem with PyNN is if a user imports `pyNN.random` before `pyNN.nest`. It would be nice to handle this more gracefully, but for now I've just added a test that NEST and mpi4py agree on the rank, and a hopefully useful error message.
+
+* Added a new `setup()` option for `pyNN.nest`: `recording_precision`. By default, `recording_precision` is 3 for on-grid and 15 for off-grid.
+
+* Partially fixed the `pyNN.nest` implementation of `TsodyksMarkramMechanism` (cf ticket:172). The 'tsodyks_synapse' model has a 'tau_psc' parameter, which should be set to the same value as the decay time constant of the post-synaptic current (which is a parameter of the neuron model). I consider this only a partial fix, because if 'tau_syn_E' or 'tau_syn_I' is changed after the creation of the Projection, 'tau_psc' will not be updated to match (unlike in the `pyNN.neuron` implementation. I'm also not sure how well it will work with native neuron models.
+
+* reverted `pyNN.nest` to reading/resetting the current time from the kernel rather than keeping track of it within PyNN. NEST warns that this is dangerous, but all the tests pass, so let's wait and see.
+
+* In `HH_cond_exp`, conductances are now in µS, as for all other conductances in PyNN, instead of nS. 
+
+* NEURON now supports Tsodyks-Markram synapses for current-based exponential synapses (before it was only for conductance-based).
+
+* NEURON backend now supports the IF_cond_exp_gsfa_grr model.
+
+* Simplification of the record_X() methods. With the addition of the
+  `PopulationView` class, the selection logic implemented by the `record_from`
+  and `rng` arguments duplicated that in `Population.__getitem__()` and
+  `Population.sample()`, and so these arguments have been removed, and the
+  `record_X()` methods now record all neurons within a `Population`,
+  `PopulationView` or `Assembly`.
+  Examples of syntax changes:
+     `pop.record_v([pop[0], pop[17]])` --> `pop[(0, 17)].record_v()`
+     `pop.record(10, rng=rng)` --> `pop.sample(10, rng).record()
+
+* Added a `sample()` method to `Population`, which returns a `PopulationView`
+  of a random sample of the neurons in the parent population.
+
+* Added the EIF_cond_exp/alpha_isfa/ista and HH_cond_exp standard models in
+  Brian.
+
+* Added a `gather` option to the `Population.get()` method.
+
+* `brian.setup()` now accepts a number of addtional argumenbts in `extra_params`,
+  For example, extra_params={'useweave': True} will lead to inline C++ code generation
+
+* Wrote a first draft of a developers' guide.
+
+* Considerably extended the `core.LazyArray` class, as a basis for a possible
+  rewrite of the `connectors` module.
+
+* The `random` module now uses `mpi4py` to determine the MPI rank and
+  num_processes, rather than receiving these as arguments to the RNG constructor
+  (see ticket:164). 
+
+* Many fixes and performance enhancements for the `brian` module, which now
+  supports synaptic plasticity.
+
+* Made the `describe()` method of `Population`, `Projection`, etc. much more
+  powerful by adding a simple plugin-like structure for templating engines.
+  Jinja2 and Cheetah currently available, with fallback to string.Template.
+
+* No more GSL warning every time! Just raise an Exception if we attempt to use
+  GSLRNG and pygsl is not available.
+
+* Added some more flexibility to init_logging: logfile=None -> stderr, format
+  includes size & rank, user can override log-level
+
+* NEST __init__.py changed to query NEST for filling NEST_SYNAPSE_TYPES.
+  Allows _S connectors if available for use with inh_gamma_generator
+
+* Started to move synapse dynamics related stuff out of Projection and into the
+  synapse dynamics-related classes, where it belongs.
+
+* Added an `Assembly` class to the API. An `Assembly` is a list of `Population`
+  and/or `PopulationView` objects, enabling multiple cell types to be
+  encapsulated in a single object. An `Assembly` object is intended to
+  behave in most ways like `Population`: you can record them, connect them using
+  a `Projection`...
+
+* Added a new "spike_precision" option to `nest.setup()`
+  (see http://neuralensemble.org/trac/PyNN/wiki/SimulatorSpecificOptions)
+
+* Updated the NEST backend to work with version 2.0.0
+
+* Rewrote the test suite, making a much cleaner distinction between unit tests,
+  which now make heavy use of mock objects to better-isolate components, and
+  system tests. Test suite now runs with nose (http://somethingaboutorange.com/mrl/projects/nose),
+  in order to facilitate continuous integration testing.
+
+* the "low-level API" (rechristened "procedural API") has been reimplemented in
+  in terms of `Population` and `Projection`, with the aim of improved
+  maintainability. For example, `create()` now returns a `Population` object
+  rather than a list of IDs, and `connect()` returns a `Projection`object. With
+  the addition of `PopulationView` and `Assembly`, `Population` now behaves much
+  more like a list of IDs (can be sliced, joined, etc.), so this should have
+  minimal impact on existing simulation scripts.
+
+* Changed the format of connection files, as written by `saveConnections()` and
+  read by `FromFileConnector`: files no longer contain the population label.
+  Connections can now also be written to NumpyBinaryFile or PickleFile objects,
+  instead of just text files. Same for `Population.save_positions()`.
+
+* Added CSAConnector, which wraps the Connection Set Algebra for use by PyNN.
+  Requires the csa package: http://pypi.python.org/pypi/csa/
+
+* Added a `PopulationView` class to the API. This allows a sub-set of the neurons
+  from a `Population` to be encapsulated in an object. We call it a "view",
+  rather than a "sub-population", to emphasize the fact that the neurons are
+  not copied: they are the same neurons as in the parent `Population`, and any
+  operations on either view or parent (setting parameter values, recording, etc.)
+  will be reflected in the other. `PopulationView` objects are intended to
+  behave in most ways like `Population`: you can record them, connect them using
+  a `Projection`, you can have views of views...
+
+* A major change to cell addressing: Populations now always store cells in a
+  one-dimensional array, which means cells no longer have an address but just
+  an index. To specify the spatial structure of a Population, pass a Structure
+  object to the constructor, e.g.
+
+  `p = Population((12,10), IF_cond_exp)`
+
+  is now
+
+  `p = Population(120, IF_cond_exp, structure=Grid2D(1.2))`
+
+  although the former syntax still works, for backwards compatibility. The reasons for doing this are:
+  (i)   we can now have more interesting structures than just grids
+  (ii)  efficiency (less juggling addresses, flattening)
+  (iii) simplicity (less juggling addresses, less code - this opens the way to a
+        much easier implementation of sub-populations).
+
+* Removed the `v_init` parameter from all cell models. Setting initial values of
+  state variables is now done via the `initialize()` function or the
+  `Population.initialize()` method.
+
+* Enhance the distance expressions by allowing expressions such as
+  (d[0] < 0.1) & (d[1] < 0.2). Complex forms can therefore now be drawn,
+  such as squares, ellipses, and so on.
+
+* Added an `n_connections` flag to the DistanceDependentProbabiblityConnector in
+order to be able to constrain the total number of connections. Can be useful for normalizations
+
+* Added a simple SmallWorldConnector. Cells are connected within a certain
+  degree d. Then, all the connections are rewired with a probability given by a
+  rewiring parameter and new targets are uniformly selected among all the
+  possible targets.
+
+* Added a method to save cell positions to file.
+
+* Added a progress bar to connectors. Now, a verbose flag allows to display or
+  not a progress bar indicating the percentage of connections established.
+
+* New implementation of the connector classes, with much improved performance
+  and scaling with MPI, and extension of distance-dependent weights and delays
+  to all connectors. In addition, a `safe` flag has been added to all connectors:
+  on by default, a user can turn it off to avoid tests on weights and delays.
+  
+* Added the ability to set the `atol` and `rtol` parameters of NEURON's cvode
+  solver in the `extra_params` argument of `setup()` (patch from Johannes Partzsch).
+
+* Made `nest`s handling of the refractory period consistent with the other backends.
+  Made the default refractory period 0.1 ms rather than 0.0 ms, since NEST appears
+  not to handle zero refractory period.
+
+* Moved standard model (cells and synapses) machinery, the `Space` class, and
+  `Error` classes out of `common` into their own modules.
+
+====================
+Release 0.6.0 (r710)
+====================
+
+There have been three major changes to the API in this version.
+
+1. Spikes, membrane potential and synaptic conductances can now be saved to file
+   in various binary formats. To do this, pass a PyNN `File` object to
+   `Population.print_X()`, instead of a filename. There are various types of
+   PyNN `File` objects, defined in the `recording.files` module, e.g.,
+   `StandardTextFile`, `PickleFile`, `NumpyBinaryFile`, `HDF5ArrayFile`.
+
+2. Added a `reset()` function and made the behaviour of `setup()` consistent
+   across simulators. `reset()` sets the simulation time to zero and sets
+   membrane potentials to their initial values, but does not change the network
+   structure. `setup()` destroys any previously defined network.
+   
+3. The possibility of expressing distance-dependent weights and delays was
+   extended to the `AllToAllConnector` and `FixedProbabilityConnector` classes.
+   To reduce the number of arguments to the constructors, the arguments affecting
+   the spatial topology (periodic boundary conditions, etc.) were moved to a new
+   `Space` class, so that only a single `Space` instance need be passed to the
+   `Connector` constructor.
+
+Details:
+
+* Switched to using the point process-based AdExp mechanism in NEURON.
+
+* Factored out most of the commonality between the `Recorder` classes of each backend into a parent class `recording.Recorder`, and tidied up the `recording` module.
+
+* Can now pass a PyNN File object to `Population.print_X()`, instead of a filename. There are various types of PyNN File objects, defined in the `recording.files` module, e.g., `StandardTextFile`, `PickleFile`, `NumpyBinaryFile`, `HDF5ArrayFile`.
+
+* Added an attribute `conductance_based` to `StandardCellType`, to make the determination of synapse type for a given cell more robust.
+
+* PyNN now uses a named logger, which makes it easier to control logging levels when using PyNN within a larger application. 
+
+* implemented gather for `Projection.saveConnections()`
+
+* Added a test script (test_mpi.py) to check whether serial and distributed simulations give the same results
+
+* Added a `size()` method to `Projection`, to give the total number of connections across all nodes (unlike `__len__()`, which gives only the connections on the local node
+
+* Speeded up record() by a huge factor (from 10 s for 12000 cells to less than 0.1 s) by removing an unecessary conditional path (since all IDs now have an attribute "local")
+
+* `synapse_type` is now passed to the `ConnectionManager` constructor, not to the `connect()` method, since (a) it is fixed for a given connection manager, (b) it is needed in other methods than just `connect()`; fixed weight unit conversion in `brian` module. 
+
+* Updated connection handling in `nest` module to work with NEST version 1.9.8498. Will not now work with previous NEST versions
+
+* The `neuron` back-end now supports having both static and Tsodyks-Markram synapses on the same neuron (previously, the T-M synapses replaced the static synapses) - in agreement with `nest`  and common sense. Thanks to Bartosz Telenczuk for reporting this. 
+
+* Added a `compatible_output` mode for the `saveConnections()` method. True by default, it allows connections to be reloaded from a file. If False, then the raw connections are stored, which makes for easier postprocessing.
+
+* Added an ACSource` current source to the `nest` module.
+
+* Fixed Hoc build directory problem in setup.py - see ticket:147
+
+* `Population.get_v()` and the other "`get`" methods now return cell indices (starting from 0) rather than cell IDs. This behaviour now matches that of `Population.print_v()`, etc. See ticket:119 if you think this is a bad idea.
+
+* Implemented `reset()` and made the behaviour of `setup()` consistent across simulators. Almost all unit tests now pass.
+
+* Moved the base `Connector` class from `common` to `connectors`. Put the `distances` function inside a `Space` class, to allow more convenient specification of topology parameters. Extended the possibility of expressing distance-dependent weights and delays to the `AllToAllConnector` and `FixedProbabilityConnector`.
+
+* `Projection.setWeights()` and `setDelays()` now accept a 2D array argument (ref ticket:136), to be symmetric with `getWeights()` and `getDelays()`. For distributed simulations, each node only takes the values it needs from the array.
+
+* `FixedProbabilityConnector` is now more strict, and checks that `p_connect` is less than 1 (see ticket:148). This makes no difference to the behaviour, but could act as a check for errors in user code.
+
+* Fixed problem with changing `SpikeSourcePoisson` rate during a simulation (see ticket:152)
+
+
+====================
+Release 0.5.0 (r652)
+====================
+
+There have been rather few changes to the API in this version, which has
+focused rather on improving the simulator interfaces and on an internal
+code-reorganization which aims to make PyNN easier to test, maintain and
+extend.
+
+Principal API changes:
+
+    * Removed the 'string' connection methods from the `Projection` constructor.
+      The `method` argument now *must* be a `Connector` object, not a string.
+    * Can now record synaptic conductances.
+    * Can now access weights and delays of individual connections one-at-a-time
+      within a `Projection` through `Connection` objects.
+    * Added an interface for injecting arbitrary time-varying currents into cells.
+    * Added `get_v()` and `get_gsyn()` methods to the `Population` class, enabling
+      membrane potential and synaptic conductances to be read directly into memory,
+      rather than saved to file.
+    
+Improvements to simulator back-ends:
+    * Implemented an interface for the Brian simulator.
+    * Re-implementated the interface to NEURON, to use the new functionality in v7.0.
+    * Removed support for version 1 of NEST. The module for NEST v2 is now simply called `pyNN.nest`.
+    * The PCSIM implementation is now more complete, and more compatible with the
+      other back-ends.
+    * Behind-the-scenes refactoring to implement the API in terms of a small number
+      of low-level, simulator-specific operations. This reduces redundancy between
+      simulator modules, and makes it easier to extend PyNN, since if new
+      functionality uses the low-level operations, it only needs to be written once,
+      not once for each simulator.
+
+Details:
+
+* Renamed `nest2` to `nest`.
+
+* Random number generators  now "parallel_safe" by default.
+
+* Added documentation on running parallel simulations.
+
+* Trying a new method of getting the last data points out of NEST: we always simulate to `t+dt`. This should be fine until we implement the possibility of accessing Vm directly from the `ID` object (see ticket:35). In the meantime, hopefully the NEST guys will change this behaviour.
+
+* `gather=True` now works for all modules, even without a shared filesystem (requires `mpi4py`).
+
+* Added an `allow_update_on_post` option to the NEURON weight adjuster mechanisms. This is set to 0 (false) for consistency with NEST, which means that weight updates are accumulated and are applied only on a pre-synaptic spike, although I'm not yet sure (a) what the correct behaviour really is, (b) what PCSIM and Brian do.
+
+* The `pcsim` module is now implemented in terms of the common implementation, using just `net.add()` and `net.connect()`. I have just commented out the old code (using `CuboidGridObjectPopulation`s and `ConnectionsProjection`s) rather than deleting it, as it will probably be mostly re-used when optimizing later.
+
+* `Population.__getitem__()` now accepts slices (see ticket:21).
+
+* NEST does not record values at t=0 or t=simtime so, for compatibility with the other simulators, we now add these values manually to the array/datafile.
+
+* Fixed the `SpikeSourcePoisson` model in the `neuron` module so it has a really fixed
+duration, not just an 'on average' fixed duration.
+
+* Created a new Exception type, `RecordingError`, for when we try to record membrane potential from a `SpikeSource`.
+
+* Renamed the `param_dict` argument of `create()` to `cellparams`, for consistency with `Population.__init__()`.
+
+* Created default implementations of nearly all functions and classes in `common`, some of which depend on the simulator package having a `simulator` module that defines certain 'primitive' capabilities.
+
+* Created default implementations of all `Connector` classes in `connectors`, which
+depend on the `Projection` having a `ConnectionManager` which in turn has a `connect()`
+method implementing divergent connect.
+
+* Added a `ConnectionManager` class to the `simulator` module in `nest2`, `neuron` and `brian` packages. This allows (i) a common way of managing connections for both the `connect()` function and the `Projection` class, (ii) a common specification of `Connector` algorithms in terms of method calls on a `ConnectionManager` instance.
+
+* Added `weights_iterator()` and `delays_iterator()` to the base `Connector` class, to make them available to all simulator modules.
+
+* Moved `Connector` base classes from `common` into a new module, `connectors`.
+
+* Moved standard dynamic synapse base classes from `common` into a new module, `synapses`.
+
+* Moved standard cell base classes from `common` into a new module, `cells`.
+
+* Moved `Timer` class from `common` to `utility`.
+
+* `Population` attributes `all_cells` and `local_cells` are now an official part of the API (`cell` is as an alias for `local_cells` for now since it was widely used, if not officially part of the API, in 0.4).
+
+* Removed the 'string' connection methods from the `Projection` constructor. The `method` argument now *must* be a `Connector` object, not a string.
+
+* Standard cell types now know what things can be recorded from them (`recordable` attribute).
+
+* Added new Exception `NothingToWriteError`. Calling `printSpikes()`, etc, when you have not recorded anything raises an Exception, since this is quite likely a mistake, but it needs to be a specific Exception type so it can be handled without inadvertently catching all other errors that are likely to arise during writing to file.
+
+* Moved old tests to examples folder
+
+* Added Padraig Gleeson's modifications to neuroml.py
+
+* little change in setup of the rng_seeds, re-add the possibility to give a seed for a RNG that then draws seeds for the simulation. In that way one does not have to provide the exact number of seeds needed, just one.
+
+* add `save_population()` and `load_population()` functions to `utility`.
+
+* `test/explore_space.py` is now working. The test script saves results to a NeuroTools datastore, which the `explore_space` script can later retrieve. Only plotting does not work in distributed mode due to lack of X-display.
+
+* STDP testing improved. `nest`, `pcsim` and `neuron` now give pretty similar results for `SpikePairRule` with `AdditiveWeightDependence`. I think some of the remaining differences are due to sampling the weights every millisecond, rather than at the beginning of each PSP. We need to develop an API for recording weights in PyNN (PCSIM and NEURON can record the weights directly, rather than by sampling, not sure about NEST).
+However, I suspect there are some fundamental differences in the algorithms (notably *when* weight changes get applied), that may make it impossible to completely reconcile the results.
+
+* Moved the `MultiSim` class from `test/multisim.py` into the `utility` module.
+
+* The `pcsim` module now supports dynamic synapses with both conductance-based and current-based synapses.
+
+* `Projection.saveConnections()`, `printWeights()` and `weightHistogram()` now work in the `pcsim` module.
+
+* `pcsim` `Connector`s now handle arrays of weights/delays.
+
+* Implemented `FromListConnector` and `FromFileConnector` for `pcsim`.
+
+* Changed tau_ref for hardware neuron model from 0.4ms to 1.0ms. Old estimation was distorted by hardware error.
+
+* Fixed a bug whereby spikes from a `Population` of `SpikeSourceArray`s are not recorded if they are set after creation of the population.
+
+* Optimisations to improve the building times of large networks in `nest2`.
+
+* Can now record synaptic conductances.
+
+* Added an interface for the Brian simulator.
+
+* When you try to write data to a file, any existing file of the same name is first renamed by appending '_old' to the filename.
+
+* Modification of the RandomDistribution object to allow the specification of boundaries, and the way we deal with numbers drawn outside those boundaries. Numbers may be clipped to min/max values, or either redrawn till they fall within min/max values
+
+* Added the possibility to select a particular model of plasticity when several are available for the same plastic rule. This is mainly used in NEST, where we set the stdp_synapse_hom as the default type, because it is more efficient when (as is often the case) all plasticity parameters are identitical.
+
+* Added the possibility of giving an expression for distant-dependent weights and delays in the `DistanceDependentProbabilityConnector`.
+
+* Harmonization of `describe()` methods across simulators, by moving its definition into `common`. `describe()` now returns a string, rather than printing directly to stdout. This lets it be used for writing to log files, etc. You will now have to use `print p.describe()` to obtain the old behaviour.`describe()` now also takes a `template` argument, allowing the output to be customized.
+
+* Added an interface for injecting arbitrary currents into cells.
+
+Usage example:
+{{{
+  cell = create(IF_curr_exp)
+  current_source1 = DCSource(amplitude=0.3, start=20, stop=80)
+  current_source2 = StepCurrentSource(times=[20,40,60,80], amplitudes=[0.3,-0.3,0.3,0.0])
+
+  cell.inject(current_source1)            # two alternatives
+  current_source2.inject_into([cell]) 
+}}}
+`DCSource` and `StepCurrentSource` are available in the `nest2`, `neuron` and `brian` modules. `NoisyCurrentSource` is only available in `nest2` for the time being, but it will be straightforward to add it for the other backends. Adding `ACSource`, etc., should be straightforward.
+
+* Optimised setting of parameter values by checking whether the list of parameters to be set contains any computed parameters, and only getting/translating all parameters in this case. Before, each time we wanted to set a parameter, we always got all the native_parameters and translated them even when there was a one-to-one correspondence between parameters.
+
+* Implemented the Gutig rule and the van Rossum rule of plasticity in `nest2`, and changed the old naming.
+
+* In `nest2`, fixed also the meanSpikeCount() method to directly obtain the spike count from the recorder, and not from the file.
+
+* Great improvement of the distance dependant distance. Speed up considerably the building time.
+
+* Moved unit tests into their own subdirectory
+
+* Fixed a bug in the periodic boundary conditions in `DistanceDependentProbabilityConnector` class if they are specified by the user and not linked to the grid sizes.
+
+* Reduced the number of adjustable parameters in the `IF_facets_hardware1` standard cell model.
+
+* Reimplemented the `neuron` module to use the new features of NEURON (`HocObject`, etc) available in v7.0.
+
+* Added `get_v()` method to the `Population` class, enabling membrane potential to be read directly into memory, rather than saved to file.
+
+====================
+Release 0.4.0 (r342)
+====================
+
+* Added a `quit_on_end` extra argument to `neuron.setup()`
+
+* Added a `synapse_types` attribute to all standard cell classes.
+
+* Removed `Projection.setThreshold()` from API
+
+* In the `neuron` module, `load_mechanisms()` now takes a path to search from as an optional argument, in order to allow loading user-defined mechanisms
+
+* Added `get_script_args()` (process command line arguments) and `colour()` (print coloured output) functions to the `utility` module.
+
+* Added `rank()` to the API (returns the MPI rank)
+
+* Removed `setRNGseeds()` from the API, since each simulator is so different in its requirements. The seeds may be provided using the `extra_params` argument to `setup()`.
+
+* The headers of output files now contain the first and last ids in the Population (not fully implemented yet 
+for recording with the low-level API)
+
+* Global variables such as the time step and minimum delay have been replaced
+with functions `get_time_step()`, `get_min_delay()` and `get_current_time()`. This
+ensures that values are always up-to-date.
+
+* Removed `cellclass` arg from `set()` function. All cells should now know their own cellclass.
+
+* Added `get()` method to `Population` class.
+
+* Default value for the `duration` parameter in `SpikeSourcePoisson` changed
+from 1e12 ms to 1e6 ms.
+
+* Reimplemented `Population.set()`, `tset()`, `rset()` in a more consistent way
+which avoids exposing the translation machinery and fixes various bugs with
+computed parameters. The new implementation is likely to be slower, but several
+optimisations are possible.
+
+* Added `simple_parameters()`, `scaled_parameters()` and `computed_parameters()`
+methods to the `StandardModelType` class. Their intended use is in making
+`set()` methods/functions more efficient for non-computed parameters when
+setting on many nodes.
+
+* Multiple calls to `Population.record()` no longer record the same cell twice.
+
+* Changed `common.ID` to `common.IDMixin`, which allows the type used for the id
+to vary (`int` for `neuron` and `nest1/2`, `long` for pcsim).
+
+* In `common.StandardModelType`, changed most of the methods to be classmethods,
+since they do not act on instance data.
+
+* Added a `ModelNotAvailable` class to allow more informative error messages 
+when people try to use a model with a simulator that doesn't support it.
+
+* hoc and mod files are now correctly packaged, installed and compiled with
+`distutils`.
+
+* Added a check that argument names to `setup()` are not mis-spelled. This is
+possible because of `extra_params`.
+
+* It is now possible to instantiate Timer objects, i.e. to have multiple,
+independent Timers
+
+* Some re-naming of function/method arguments to conform more closely to
+Python style guidelines, e.g. `methodParameters` to `method_parameters` and
+`paramDict` to `param_dict`.
+
+* Added `getWeights()` and `getDelays()` methods to `Projection` class. NOTE:
+check for which simulators this is available. XXX
+
+* Added a `RoundingWarning` exception, to warn the user when rounding is
+occurring.
+
+* Can now change the `spike_times` attribute of a `SpikeSourceArray` during a
+simulation without reinitialising. This reduces memory for long simulations,
+since it is not necessary to load all the spike times into memory at once.
+NOTE: check for which simulators this works. XXX
+
+* The `neuron` module now requires NEURON v6.1 or later.
+
+* For developers, changes to the layout of the code: 
+    (1) Simulator modules have been moved to a `src` subdirectory - this is to
+    make distribution/installation of PyNN easier.
+    (2) Several of the modules have been split into multiple files, in their own
+    subdirectories, e.g.: `nest2.py` --> `nest2/__init__.py`, `nest2/cells.py`
+    and `nest2/connectors.py`. The reason for this is that the individual files
+    were getting very long and difficult to navigate.
+
+* Added `index()` method to `Population` class - what does it do?? XXX
+
+* Added `getSpikes()` method to `Population` class - returns spike times/ids as
+a numpy array.
+
+* Added support for the Stage 1 FACETS hardware.
+
+* Changed the default weight to zero (was 1.0 nA)
+
+* New STDP API, with implementations for `neuron` and `nest2`, based on
+discussions at the CodeSprint.
+
+* Distance calculations can now use periodic boundary conditions.
+
+* Parameter translation system now fully supports reverse translation
+(including units). The syntax for specifying translations is now simpler,
+which makes it easier to define new standard cell models.
+
+* All simulator modules now have a `list_standard_models()` function, which
+returns a list of all the models that are available for that simulator.
+
+* The `connect()` function now returns a `Connection` object, which has
+`weight` and `delay` properties. This allows accessing/changing weights/delays
+of individual connections in the low-level API. NOTE: only available in `nest2`?
+Implement for all sims or delete from this release. XXX
+
+* Added `record_c()` and `print_c()` methods to the `Population` class, to allow
+recording synaptic conductances. NOTE: only in `nest2` - should add to
+`neuron` or delete from this release. XXX
+
+* Procedures for connecting `Population`s can now be defined as classes
+(subclasses of an abstract `Connector` class) rather than given as a string.
+This should make it easier for users to add their own connection methods.
+Weights and delays can also be specified in the `Connector` constructor,
+removing the need to call `setWeights()` and `setDelays()` after the building
+of the connections.
+We keep the string specification for backwards compatibility, but this is
+deprecated and will be removed in a future API version. 
+
+* Added new standard models: EIF_cond_alpha_isfa_ista, IF_cond_exp_gsfa_grr,
+HodgkinHuxley. NOTE: check names, and that all models are supported by at
+least two simulators.
+
+* Version 2 of the NEST simulator is now supported, with the `nest2` module.
+The `nest` module is now called `nest1`.
+
+* Changed the order of arguments in `random.RandomDistribution.__init__()` to
+put `rng` last, since this is the argument for which the default is most often
+used (moving it lets positional arguments be used for `distribution` and
+`parameters` when `rng` is not specified).
+
+* Changes to `ID` class:
+  - `_cellclass` attribute renamed to `cellclass` and is now a [http://www.geocities.com/foetsch/python/new_style_classes.htm property].
+  - Ditto for `_position` --> `position`
+  - Methods `setPosition()`, `getPosition()`, `setCellClass()` removed (just use
+  the `position` or `cellclass` properties).
+  - `set(param,val=None)` changed to `setParameters(**parameters)`.
+  - Added `getParameters()`
+  - `__setattr__()` and `__getattr__()` overridden, so that cell parameters can
+  be read/changed using dot notation, e.g. `id.tau_m = 20.0`
+Note that one of the reasons for using properties is that it allows attributes
+to be created only when needed, hopefully saving on memory.
+
+* Added `positions` property to `Population` class, which allows the positions
+of all cells in a population to be set/read at once as a numpy array.
+
+* All positions are now in 3D space, irrespective of the shape of the
+`Population`.
+
+* Threads can now be used in `nest` and `pcsim`, via the `extra_param` option of
+the `setup()` function. 
+
+* Removed `oldneuron` module.
+
+* Added `__iter__()` (iterates over ids) and `addresses()` (iterates over
+addresses) to the `Population` class.
+
+=============
+Release 0.3.0
+=============
+
+* `pcsim` is now fully supported, although there are still one or two parts of
+the API that are not implemented.
+
+* The behaviour of the `run()` function in the `neuron` module has been changed to match the `nest` and `pcsim` modules, i.e., calling `run(simtime)` several times in succession will advance the simulation by `simtime` ms each time, whereas before, `neuron` would reset time to zero each time.
+
+* PyTables is now optional with `pcsim`
+
+* Change to `neuron` and `oldneuron` to match more closely the behaviour of
+`nest` and `pcsim` when the `synapse_type` argument is not given in `connect()`.
+Before, `neuron` would by default choose an excitatory synapse. Now, it chooses
+an inhibitory synapse if the weight is negative. 
+
+* `runtests.py` now runs tests for `pcsim` as well as `nest`, `neuron` and
+`oldneuron`.
+
+* Minor changes to arg names and doc-strings, to improve API-consistency between modules.
+
+* Added users' guide (in `doc` directory).
+
+* Renamed `neuron` module to `oldneuron` and `neuron2` to `neuron`.
+
+* PyNN can now be installed using `distutils`, although this doesn't install
+or compile hoc/mod files.
+
+* Added a `compatible_output` argument to the `printX()` functions/methods, to
+allow choosing a simulator's native format (faster) or a format that is
+consistent across simulators.
+
+* Temporary files used for saving spikes and membrane potential are now created
+using the `tempfile` module, which means it should be safe to run multiple PyNN
+simulations at the same time (before, they would all overwrite the same file).
+
+* pygsl is no longer an absolute requirement but can be used if available
+
+* Changed the behaviour of `Population` indexing in the `nest` module to be more
+consistent with the `neuron2` module, in two ways. (i) negative addresses now
+raise an Exception. (ii) Previously, an integer index `n` signified the `(n+1)`th
+neuron in the population, e.g., `p[99]` would be the same as `p[10,10]` for a
+10x10 population. Now, `p[99]` is the same as `p[99,]` and is only valid for a
+1D population.
+
+* Addition of `ID` class (inherits from `int`), allowing syntax like
+`p[3,4].set('tau_m',20.0)` where `p` is a Population object.
+
+=============
+Release 0.2.0
+=============
+
+* `Population.tset()` now accepts arrays of arrays (e.g. conceptually a 2D array
+of 1D arrays, actually a 3D array) as well as arrays of lists.
+
+* setup() now returns the node id. This can be used in a parallel framework to
+identify the master node.
+
+* Unified output format for spikes and membrane potential for `nest` and
+`neuron` modules.
+
+* Added first experimental version of `pcsim` module
+
+* `neuron2` module now supports distributed simulations using NEURON compiled
+with both MPI and Python support.
+
+* `Population[xx]` syntax for getting individual cell ids improved. You can now
+write `p[2,3]` instead of `p[(2,3)]`.
+
+* `v_init` added as a parameter to the `IF_curr_alpha`, etc, models.
+
+* Trying to access a hoc variable that doesn't exist raises a Python exception,
+`HocError`.
+
+* If synaptic delay is not specified, delays are now set to `min_delay`, not zero.
+
+* Random number API allows keeping control of the random numbers used in
+simulations, by passing an RNG object as an argument to functions that use RNGs.
+`random` module has wrappers for NumPy RNGs and GSL RNGs, as well as a stub
+class to indicate the simulator's native RNG should be used (i.e., the `Random`
+class in hoc).
+
+* Translation of model and parameter names from standardised names to
+simulator-specific names now uses one class per neuron model, rather than a
+single class with one method per model. For users, the only difference is
+that you have to use, e.g.,
+    `create(IF_curr_alpha)`
+instead of
+    `create('IF_curr_alpha')`
+i.e., pass the class instead of a string.
+For developers, it should now be easier to add new standard models. 
+
+* Added `neuron2` module, a reimplemtation of the PyNN API for NEURON, that uses
+more Python and less hoc.
+
+
+=============
+Release 0.1.0
+=============
+
+Version 0.1 of the API was never really released. At this point the project used
+the FACETSCOMMON svn repository.
+
+First svn import of early stage of PyNN was on 9th May 2006.
