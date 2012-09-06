@@ -568,8 +568,8 @@ class Projection(common.Projection):
         if format == 'list':
             values = values.tolist()
         elif format == 'array':
-            values_arr = numpy.nan * numpy.ones((self.parent.pre.size, self.parent.post.size))
-            sources, targets = self._indices
+            values_arr = numpy.nan * numpy.ones((self.pre.size, self.post.size))
+            sources, targets = self._get_indices()
             values_arr[sources, targets] = values
             values = values_arr
         else:
